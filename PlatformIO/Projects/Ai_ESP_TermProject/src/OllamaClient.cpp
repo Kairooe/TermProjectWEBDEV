@@ -58,7 +58,7 @@ TriviaQ OllamaClient::fetch() {
     HTTPClient http;
     http.begin(_url);
     http.addHeader("Content-Type", "application/json");
-    http.setTimeout(60000);
+    http.setTimeout(10000);  // 10-second hard timeout; main.cpp retries up to 3×
 
     // Build request body:
     //   temperature > 1.0  → more creative / less repetitive outputs
@@ -111,6 +111,16 @@ TriviaQ OllamaClient::fetch() {
     if (err) {
         Serial.printf("[FETCH] Inner JSON error: %s\n", err.c_str());
         return q;
+    }
+
+    // ── JSON field validation ─────────────────────────────────────────────────
+    // Reject the response if any required field is missing or empty
+    const char* required[] = {"question", "A", "B", "C", "D", "answer"};
+    for (const char* key : required) {
+        if (!innerDoc.containsKey(key) || innerDoc[key].as<String>().isEmpty()) {
+            Serial.printf("[FETCH] Bad response: missing/empty field \"%s\"\n", key);
+            return q;  // q.valid stays false
+        }
     }
 
     q.question   = innerDoc["question"].as<String>();
