@@ -9,6 +9,7 @@
 #include "LEDController.h"
 #include "OllamaClient.h"
 #include "BackendClient.h"
+#include "DeviceClient.h"
 
 // ===== PINS =====
 #define PIN_BTN_A   19
@@ -55,7 +56,8 @@ OLEDDisplay   oled;
 ButtonHandler buttons(BTN_PINS);
 LEDController leds(LED_PINS);
 OllamaClient  ollama(OLLAMA_URL, OLLAMA_MODEL, OLLAMA_PROMPT);
-BackendClient backend(BACKEND_URL);
+BackendClient backend(BACKEND_BASE);
+DeviceClient  deviceClient(BACKEND_BASE);
 
 // ── Score / username tracking ─────────────────────────────────────────────────
 static int    totalQuestions  = 0;
@@ -63,6 +65,8 @@ static int    correctAnswers  = 0;
 static int    currentStreak   = 0;
 static int    bestStreak      = 0;
 static String currentUsername = "Player1";
+static char   deviceCode[7]   = "";   // set by pairDevice(); used by backend.post()
+static String currentSubject  = "";   // set by pairDevice() from userConfig
 
 // ── Game state ────────────────────────────────────────────────────────────────
 enum GameState {
@@ -93,6 +97,7 @@ static bool ensureWiFi();
 static void enterGameOver();
 static void resetGame();
 static void pickUsername();
+static void pairDevice();
 
 // ===== GAME MODULE INIT =======================================================
 // Called once the first time isConnected() is true in loop().
@@ -116,8 +121,9 @@ static void initGameModules() {
     if (getLocalTime(&tinfo, 5000)) Serial.println("[TIME] NTP synced");
     else                            Serial.println("[TIME] NTP timeout — using epoch");
 
-    // Username selection (blocking — uses buttons + oled)
-    pickUsername();
+    // Device pairing — shows 6-digit code on OLED, polls until web user claims it.
+    // Falls back to the local username picker if the backend is unreachable.
+    pairDevice();
     delay(300);
 
     // Press any button to start
@@ -268,11 +274,14 @@ static void handleDisplay() {
                         : leds.flashWrong(currentQ.correct);
                 leds.off();
 
-                // backend.post() disabled until server is running at BACKEND_URL
-                // bool saved = backend.post(currentUsername, currentQ,
-                //                           (uint8_t)selectedAns, correct,
-                //                           (uint8_t)totalQuestions);
-                // if (saved) oled.setFeedbackNote("Saved!");
+                // Post result to backend using device code as auth (no JWT needed)
+                if (deviceCode[0] != '\0') {
+                    bool saved = backend.post(deviceCode, currentQ,
+                                              (uint8_t)selectedAns, correct,
+                                              (uint8_t)totalQuestions,
+                                              currentSubject);
+                    if (saved) oled.setFeedbackNote("Saved!");
+                }
 
                 stateTimer = millis();
                 gameState  = GS_FEEDBACK;
@@ -352,6 +361,101 @@ static void pickUsername() {
     prefs.end();
     currentUsername = String(PRESET_USERS[idx]);
     Serial.printf("[USER] Selected: %s\n", currentUsername.c_str());
+}
+
+// ===== DEVICE PAIRING =========================================================
+// Generates a random 6-digit code, registers it with the backend, displays it
+// on the OLED, and polls every 3 s until a web user claims it.
+// Falls back to pickUsername() if the backend cannot be reached after 3 attempts.
+// On a claimed session the backend returns the web user's username, which is
+// stored in currentUsername so scores are attributed correctly.
+
+static void pairDevice() {
+    char code[7];
+
+    while (true) {
+        // Generate a fresh zero-padded 6-digit code from the hardware RNG
+        snprintf(code, sizeof(code), "%06lu",
+                 (unsigned long)(esp_random() % 1000000UL));
+
+        // ── Show code immediately so user can read it ─────────────────────────
+        Serial.printf("[PAIR] Code: %s — registering...\n", code);
+        oled.showStatus(code, "trivia.local:5173", "C/D=skip pairing");
+
+        // ── Register with backend (try up to 3×, non-blocking between tries) ──
+        bool registered = false;
+        for (uint8_t attempt = 0; attempt < 3 && !registered; attempt++) {
+            if (attempt > 0) {
+                // Show code again with retry hint between attempts
+                char buf[20];
+                snprintf(buf, sizeof(buf), "Retry %d/3...", attempt + 1);
+                oled.showStatus(code, buf, "C/D=skip pairing");
+                delay(1500);
+            }
+            if (ensureWiFi()) registered = deviceClient.registerCode(code);
+        }
+
+        if (!registered) {
+            Serial.println("[PAIR] Backend unreachable — using local username picker");
+            pickUsername();
+            return;
+        }
+
+        // Save the active code so backend.post() can use it for record attribution
+        strncpy(deviceCode, code, sizeof(deviceCode));
+
+        // ── Re-display code cleanly after registration ────────────────────────
+        oled.showStatus(code, "Enter on website", "C/D=skip pairing");
+        Serial.printf("[PAIR] Waiting for claim — code: %s\n", code);
+
+        // ── Poll every 3 s until claimed, expired, or user presses C/D ────────
+        while (true) {
+            // Non-blocking 3-second wait — check buttons every 50 ms
+            uint32_t pollStart = millis();
+            while (millis() - pollStart < 3000) {
+                buttons.update();
+                // C (idx 2) or D (idx 3) pressed → skip to offline username pick
+                if (buttons.getAnswer() >= 2) {
+                    Serial.println("[PAIR] Skipped — using local username picker");
+                    buttons.unlock();
+                    pickUsername();
+                    return;
+                }
+                delay(50);
+            }
+
+            if (!ensureWiFi()) {
+                // WiFi blip — redisplay code and keep waiting
+                oled.showStatus(code, "Enter on website", "C/D=skip pairing");
+                continue;
+            }
+
+            String username, subject, difficulty;
+            int8_t result = deviceClient.poll(code, username, subject, difficulty);
+
+            if (result == 1) {
+                // Claimed — use the web user's name and study config
+                currentUsername = username;
+                currentSubject  = subject;
+                ollama.setUserConfig(subject, difficulty);
+                Serial.printf("[PAIR] Paired as: %s\n", currentUsername.c_str());
+                oled.showStatus("Paired!", currentUsername.c_str(), "Starting soon...");
+                delay(1500);
+                return;
+            }
+
+            if (result == -1) {
+                // Session expired on the server — generate a new code
+                Serial.println("[PAIR] Session expired — regenerating code");
+                oled.showStatus("Expired", "New code...", nullptr);
+                delay(800);
+                break;  // outer loop generates a new code
+            }
+
+            // Still pending — redisplay code (ensureWiFi may have blanked screen)
+            oled.showStatus(code, "Enter on website", "C/D=skip pairing");
+        }
+    }
 }
 
 // ===== SETUP ==================================================================

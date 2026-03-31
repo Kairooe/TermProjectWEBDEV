@@ -303,6 +303,10 @@ void WiFiManager::registerRoutes() {
                     (enc ? "true" : "false") + "}";
         }
         json += "]";
+        // FIX (memory leak): scanNetworks() allocates a heap buffer for results that
+        // persists until scanDelete() is called; omitting this leaks memory every time
+        // the user presses "Scan for Networks" in the captive portal.
+        WiFi.scanDelete();
         request->send(200, "application/json", json);
     });
 

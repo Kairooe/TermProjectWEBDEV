@@ -25,9 +25,36 @@ const char* const OllamaClient::_TOPICS[] = {
 const uint8_t OllamaClient::_NUM_TOPICS =
     sizeof(OllamaClient::_TOPICS) / sizeof(OllamaClient::_TOPICS[0]);
 
+// ── Aspect list ───────────────────────────────────────────────────────────────
+// When the user has set a fixed subject, we rotate through these aspects so the
+// model is forced to pick a different angle each question instead of defaulting
+// to the same famous fact every time.
+const char* const OllamaClient::_ASPECTS[] = {
+    "key events",
+    "important people and leaders",
+    "causes and origins",
+    "consequences and aftermath",
+    "technology and weapons",
+    "dates and timeline",
+    "battles and locations",
+    "politics and decisions",
+    "lesser-known facts",
+    "statistics and numbers",
+};
+const uint8_t OllamaClient::_NUM_ASPECTS =
+    sizeof(OllamaClient::_ASPECTS) / sizeof(OllamaClient::_ASPECTS[0]);
+
 // ── Constructor ───────────────────────────────────────────────────────────────
 OllamaClient::OllamaClient(const char* url, const char* model, const char* prompt)
     : _url(url), _model(model), _prompt(prompt) {}
+
+// ── setUserConfig ─────────────────────────────────────────────────────────────
+void OllamaClient::setUserConfig(const String& subject, const String& difficulty) {
+    _subject    = subject;
+    _difficulty = difficulty;
+    Serial.printf("[FETCH] UserConfig set — subject: \"%s\"  difficulty: \"%s\"\n",
+                  _subject.c_str(), _difficulty.c_str());
+}
 
 // ── Private ───────────────────────────────────────────────────────────────────
 String OllamaClient::_extractJson(const String& s) {
@@ -46,14 +73,31 @@ TriviaQ OllamaClient::fetch() {
         return q;
     }
 
-    // Pick the next topic and advance the index
-    const char* topic = _TOPICS[_topicIdx % _NUM_TOPICS];
-    _topicIdx++;
+    // Build topic string — rotate aspects when subject is fixed so the model is
+    // forced to pick a different angle every question (prevents repetition)
+    String topic;
+    if (_subject.length() > 0) {
+        const char* aspect = _ASPECTS[_aspectIdx % _NUM_ASPECTS];
+        _aspectIdx++;
+        topic = _subject + ", specifically about " + aspect;
+    } else {
+        topic = _TOPICS[_topicIdx % _NUM_TOPICS];
+        _topicIdx++;
+    }
 
-    // Append the topic to the base prompt
+    // Build prompt: base + topic + optional difficulty instruction
     String fullPrompt = String(_prompt) + " Topic: " + topic + ".";
+    if (_difficulty.length() > 0) {
+        if (_difficulty == "easy")
+            fullPrompt += " Use simple, well-known facts suitable for beginners.";
+        else if (_difficulty == "medium")
+            fullPrompt += " Use moderately challenging facts.";
+        else if (_difficulty == "hard")
+            fullPrompt += " Use specific, challenging facts that require deep knowledge.";
+    }
 
-    Serial.printf("[FETCH] Topic: %s\n", topic);
+    Serial.printf("[FETCH] Topic: %s  Difficulty: %s\n",
+                  topic.c_str(), _difficulty.length() ? _difficulty.c_str() : "default");
 
     HTTPClient http;
     http.begin(_url);
@@ -88,9 +132,19 @@ TriviaQ OllamaClient::fetch() {
 
     DynamicJsonDocument outerDoc(2048);
     WiFiClient* stream = http.getStreamPtr();
+    // FIX (null pointer): getStreamPtr() returns nullptr when the connection dropped
+    // between POST and read; dereferencing it without this guard causes a hard crash.
+    if (!stream) {
+        Serial.println("[FETCH] ERROR: stream is null — connection dropped after POST");
+        http.end();
+        return q;
+    }
     DeserializationError err = deserializeJson(outerDoc, *stream,
                                                DeserializationOption::Filter(filter));
     http.end();
+    // FIX (dangling pointer): stream points into HTTPClient's internal WiFiClient
+    // which http.end() frees; clear it so any future accidental use fails loudly.
+    stream = nullptr;
 
     if (err) {
         Serial.printf("[FETCH] Outer JSON error: %s\n", err.c_str());

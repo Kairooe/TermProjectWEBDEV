@@ -1,7 +1,9 @@
 #pragma once
 
 // ── Backend ───────────────────────────────────────────────────────────────────
-#define BACKEND_URL     "http://192.168.1.100:3000/api/answer"
+#define BACKEND_BASE  "https://api.ktran.tech"
+
+#define BACKEND_URL     BACKEND_BASE "/api/study/record"
 
 // ── Ollama AI ─────────────────────────────────────────────────────────────────
 #define OLLAMA_URL      "http://192.168.1.166:11434/api/generate"
@@ -15,5 +17,5 @@ static const char* const PRESET_USERS[] = {
     "Player1", "Player2", "Player3", "Player4",
     "Alice",   "Bob",     "Charlie", "Diana"
 };
-static const uint8_t NUM_PRESET_USERS =
-    (uint8_t)(sizeof(PRESET_USERS) / sizeof(PRESET_USERS[0]));
+static const int NUM_PRESET_USERS =
+    (int)(sizeof(PRESET_USERS) / sizeof(PRESET_USERS[0]));
