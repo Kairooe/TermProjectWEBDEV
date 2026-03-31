@@ -382,21 +382,39 @@ static void pairDevice() {
         Serial.printf("[PAIR] Code: %s — registering...\n", code);
         oled.showStatus(code, "trivia.local:5173", "C/D=skip pairing");
 
-        // ── Register with backend (try up to 3×, non-blocking between tries) ──
+        // ── Register with backend — retry for up to 10 min, C/D skips ──────────
         bool registered = false;
-        for (uint8_t attempt = 0; attempt < 3 && !registered; attempt++) {
-            if (attempt > 0) {
-                // Show code again with retry hint between attempts
-                char buf[20];
-                snprintf(buf, sizeof(buf), "Retry %d/3...", attempt + 1);
-                oled.showStatus(code, buf, "C/D=skip pairing");
-                delay(1500);
+        {
+            const uint32_t REGISTER_TIMEOUT_MS = 600000UL; // 10 minutes
+            uint32_t regStart = millis();
+            uint8_t attempt = 0;
+            while (!registered && (millis() - regStart < REGISTER_TIMEOUT_MS)) {
+                if (attempt > 0) {
+                    // Wait 5 s between retries, checking buttons every 50 ms
+                    uint32_t waitStart = millis();
+                    while (millis() - waitStart < 5000) {
+                        buttons.update();
+                        if (buttons.getAnswer() >= 2) {
+                            Serial.println("[PAIR] Skipped during registration — using local username picker");
+                            buttons.unlock();
+                            pickUsername();
+                            return;
+                        }
+                        delay(50);
+                    }
+                    // Update OLED with elapsed time
+                    uint32_t secsLeft = (REGISTER_TIMEOUT_MS - (millis() - regStart)) / 1000;
+                    char buf[22];
+                    snprintf(buf, sizeof(buf), "Retry... %lus left", (unsigned long)secsLeft);
+                    oled.showStatus(code, buf, "C/D=skip pairing");
+                }
+                if (ensureWiFi()) registered = deviceClient.registerCode(code);
+                attempt++;
             }
-            if (ensureWiFi()) registered = deviceClient.registerCode(code);
         }
 
         if (!registered) {
-            Serial.println("[PAIR] Backend unreachable — using local username picker");
+            Serial.println("[PAIR] Backend unreachable after 10 min — using local username picker");
             pickUsername();
             return;
         }

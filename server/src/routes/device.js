@@ -16,7 +16,7 @@ router.post('/register', async (req, res) => {
 
     await DeviceSession.deleteOne({ code, status: 'pending' });
 
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
     const session = await DeviceSession.create({ code, expiresAt });
 
     res.status(201).json({ code: session.code, expiresAt: session.expiresAt });
