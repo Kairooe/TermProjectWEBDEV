@@ -94,7 +94,8 @@ private:
     // ── Connection helpers ────────────────────────────────────────────────────
     // Dispatches to the correct connect path and polls until connected or timeout.
     bool attemptConnect(const String &ssid, const String &password,
-                        const String &identity, const String &authType);
+                        const String &identity, const String &authType,
+                        unsigned long timeoutMs = WM_CONNECT_TIMEOUT_MS);
 
     // WPA2-Enterprise (PEAP/MSCHAPv2) path via esp_wpa2 API.
     bool connectEnterprise(const String &ssid, const String &identity,

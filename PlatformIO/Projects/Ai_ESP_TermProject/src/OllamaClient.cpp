@@ -1,5 +1,6 @@
 #include "OllamaClient.h"
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
@@ -99,8 +100,15 @@ TriviaQ OllamaClient::fetch() {
     Serial.printf("[FETCH] Topic: %s  Difficulty: %s\n",
                   topic.c_str(), _difficulty.length() ? _difficulty.c_str() : "default");
 
+    WiFiClientSecure secureClient;
     HTTPClient http;
-    http.begin(_url);
+    String urlStr(_url);
+    if (urlStr.startsWith("https://")) {
+        secureClient.setInsecure();
+        http.begin(secureClient, urlStr);
+    } else {
+        http.begin(urlStr);
+    }
     http.addHeader("Content-Type", "application/json");
     http.setTimeout(10000);  // 10-second hard timeout; main.cpp retries up to 3×
 

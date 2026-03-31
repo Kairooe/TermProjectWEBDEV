@@ -69,13 +69,15 @@ bool WiFiManager::bothButtonsHeld() const {
 
 // ── attemptConnect ────────────────────────────────────────────────────────────
 // Dispatches to the correct connection path then polls until WL_CONNECTED
-// or WM_CONNECT_TIMEOUT_MS elapses.
-// Note: this call is intentionally blocking — it is only invoked from begin()
-// (setup context) or the /connect POST handler (async task), never from loop().
+// or the supplied timeout elapses.
+// Boot auto-connect passes WM_AUTOCONNECT_TIMEOUT (30s) so a missing network
+// fails fast. The /connect portal handler passes WM_CONNECT_TIMEOUT_MS (15min)
+// to give the user time to type credentials.
 bool WiFiManager::attemptConnect(const String &ssid,
                                  const String &password,
                                  const String &identity,
-                                 const String &authType) {
+                                 const String &authType,
+                                 unsigned long timeoutMs) {
     if (authType == "enterprise") {
         return connectEnterprise(ssid, identity, password);
     }
@@ -92,7 +94,7 @@ bool WiFiManager::attemptConnect(const String &ssid,
 
     unsigned long start = millis();
     while (WiFi.status() != WL_CONNECTED &&
-           millis() - start < WM_CONNECT_TIMEOUT_MS) {
+           millis() - start < timeoutMs) {
         delay(500);
     }
 
@@ -418,7 +420,7 @@ void WiFiManager::begin() {
 
     // Try auto-connecting with saved credentials
     oledStatus("Connecting...", _savedSSID);
-    if (attemptConnect(_savedSSID, _savedPassword, _savedIdentity, _savedAuthType)) {
+    if (attemptConnect(_savedSSID, _savedPassword, _savedIdentity, _savedAuthType, WM_AUTOCONNECT_TIMEOUT)) {
         _connected = true;
         oledStatus("Connected!", WiFi.localIP().toString());
     } else {

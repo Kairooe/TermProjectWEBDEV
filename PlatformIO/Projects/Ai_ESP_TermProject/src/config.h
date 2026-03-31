@@ -6,7 +6,7 @@
 #define BACKEND_URL     BACKEND_BASE "/api/study/record"
 
 // ── Ollama AI ─────────────────────────────────────────────────────────────────
-#define OLLAMA_URL      "http://192.168.1.166:11434/api/generate"
+#define OLLAMA_URL      BACKEND_BASE "/api/ai/generate"
 #define OLLAMA_MODEL    "qwen2.5:7b"
 
 // ── WiFi captive-portal AP name (shown if no saved credentials) ───────────────

@@ -13,6 +13,7 @@ app.use(express.json());
 app.use('/api/auth',   require('./src/routes/auth'));
 app.use('/api/device', require('./src/routes/device'));
 app.use('/api/study',  require('./src/routes/study'));
+app.use('/api/ai',     require('./src/routes/ai'));
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
