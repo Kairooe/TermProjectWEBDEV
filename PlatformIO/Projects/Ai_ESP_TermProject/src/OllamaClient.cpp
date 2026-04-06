@@ -108,7 +108,7 @@ TriviaQ OllamaClient::fetch() {
         http.begin(urlStr);
     }
     http.addHeader("Content-Type", "application/json");
-    http.setTimeout(90000);  // 90-second timeout — allows for remote network latency + LLM inference time
+    http.setTimeout(65000);  // HTTPClient::setTimeout takes uint16_t (max 65535 ms) — use 65 s
 
     // Build request body:
     //   temperature > 1.0  → more creative / less repetitive outputs
