@@ -35,7 +35,6 @@ public:
     void setFeedbackNote(const char* text);  // override zone[1] during feedback (e.g. "Saved!")
     void tick();
 
-    void showSplash(const char* statusLine);
     void showStatus(const char* title, const char* line1, const char* line2 = nullptr);
     void showSummaryScore(int total, int correct);
     void showSummaryStreak(int best);

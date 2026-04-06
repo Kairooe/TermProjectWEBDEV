@@ -3,8 +3,6 @@
 // ── Backend ───────────────────────────────────────────────────────────────────
 #define BACKEND_BASE  "https://api.ktran.tech"
 
-#define BACKEND_URL     BACKEND_BASE "/api/study/record"
-
 // ── Ollama AI ─────────────────────────────────────────────────────────────────
 #define OLLAMA_URL      BACKEND_BASE "/api/ai/generate"
 #define OLLAMA_MODEL    "qwen2.5:7b"

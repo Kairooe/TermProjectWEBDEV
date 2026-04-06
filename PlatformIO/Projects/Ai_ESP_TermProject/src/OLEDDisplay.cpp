@@ -256,33 +256,6 @@ void OLEDDisplay::setFeedbackNote(const char* text) {
 
 // ── Static screens (bypass zone system) ──────────────────────────────────────
 
-void OLEDDisplay::showSplash(const char* statusLine) {
-    _zoneMode = false;
-    _disp.clearDisplay();
-    _disp.setTextColor(SSD1306_WHITE);
-
-    // "Digital" — textSize(2), centered (12px/char)
-    _disp.setTextSize(2);
-    int16_t x = (int16_t)((SCREEN_W - 7 * 12) / 2);
-    _disp.setCursor(x > 0 ? x : 0, 2);
-    _disp.print("Digital");
-
-    // "Flashcard" — textSize(2), centered
-    x = (int16_t)((SCREEN_W - 9 * 12) / 2);
-    _disp.setCursor(x > 0 ? x : 0, 20);
-    _disp.print("Flashcard");
-
-    // Divider
-    _disp.drawFastHLine(0, 39, SCREEN_W, SSD1306_WHITE);
-
-    // Status line — textSize(1)
-    _disp.setTextSize(1);
-    _disp.setCursor(0, 44);
-    _disp.print(statusLine);
-
-    _disp.display();
-}
-
 void OLEDDisplay::showStatus(const char* title, const char* line1, const char* line2) {
     _zoneMode = false;
     _disp.clearDisplay();

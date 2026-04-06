@@ -4,8 +4,6 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
-static const char* const LABELS[4] = {"A", "B", "C", "D"};
-
 // ── Topic list ────────────────────────────────────────────────────────────────
 // Each fetch() call advances to the next topic, forcing the model to vary its
 // subject matter rather than defaulting to the same category repeatedly.

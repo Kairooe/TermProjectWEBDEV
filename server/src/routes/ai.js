@@ -13,7 +13,6 @@ const OLLAMA_TIMEOUT = 120000; // 120 s — LLM inference can be slow
 //   2. A socket timeout can abort the Ollama request cleanly on a hung inference.
 router.post('/generate', (req, res) => {
   const body = JSON.stringify(req.body);
-  console.log('[ai/generate] forwarding to Ollama — model:', req.body && req.body.model);
 
   const options = {
     hostname: OLLAMA_HOST,
@@ -31,8 +30,6 @@ router.post('/generate', (req, res) => {
     ollamaRes.on('data', chunk => chunks.push(chunk));
     ollamaRes.on('end', () => {
       const data = Buffer.concat(chunks);
-      console.log('[ai/generate] Ollama responded — status:', ollamaRes.statusCode,
-                  '— bytes:', data.length);
       res.status(ollamaRes.statusCode)
          .set('Content-Type', 'application/json')
          .send(data);
