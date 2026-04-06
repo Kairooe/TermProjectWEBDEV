@@ -124,11 +124,13 @@ TriviaQ OllamaClient::fetch() {
     String body;
     serializeJson(reqDoc, body);
 
-    Serial.println("[FETCH] POST → Ollama ...");
+    Serial.printf("[FETCH] POST → %s\n", urlStr.c_str());
     int code = http.POST(body);
+    Serial.printf("[FETCH] HTTP code: %d\n", code);
 
     if (code != 200) {
-        Serial.printf("[FETCH] HTTP error: %d\n", code);
+        String errBody = http.getString();
+        Serial.printf("[FETCH] Error body: %.200s\n", errBody.c_str());
         http.end();
         return q;
     }

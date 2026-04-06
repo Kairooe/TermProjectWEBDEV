@@ -70,7 +70,7 @@ bool WiFiManager::bothButtonsHeld() const {
 // ── attemptConnect ────────────────────────────────────────────────────────────
 // Dispatches to the correct connection path then polls until WL_CONNECTED
 // or the supplied timeout elapses.
-// Boot auto-connect passes WM_AUTOCONNECT_TIMEOUT (30s) so a missing network
+// Boot auto-connect passes WM_AUTOCONNECT_TIMEOUT (10s) so a missing network
 // fails fast. The /connect portal handler passes WM_CONNECT_TIMEOUT_MS (15min)
 // to give the user time to type credentials.
 bool WiFiManager::attemptConnect(const String &ssid,
@@ -92,10 +92,31 @@ bool WiFiManager::attemptConnect(const String &ssid,
         WiFi.begin(ssid.c_str(), password.c_str());
     }
 
-    unsigned long start = millis();
-    while (WiFi.status() != WL_CONNECTED &&
-           millis() - start < timeoutMs) {
-        delay(500);
+    unsigned long start      = millis();
+    unsigned long holdStart  = 0;
+    bool          holdActive = false;
+
+    while (WiFi.status() != WL_CONNECTED && millis() - start < timeoutMs) {
+        delay(250);
+
+        // C+D hold detection — abort connection and enter pairing if held 3 s
+        if (bothButtonsHeld()) {
+            if (!holdActive) {
+                holdActive = true;
+                holdStart  = millis();
+            } else if (millis() - holdStart >= WM_HOLD_DURATION) {
+                Serial.println("[WM] C+D held during connect — aborting, entering pairing");
+                WiFi.disconnect();
+                eraseCredentials();
+                startPairingMode();
+                return false;
+            }
+        } else {
+            holdActive = false;
+            holdStart  = 0;
+        }
+
+        oledStatus("Connecting...", ssid, "Hold C+D to reset");
     }
 
     return WiFi.status() == WL_CONNECTED;
@@ -423,8 +444,9 @@ void WiFiManager::begin() {
     if (attemptConnect(_savedSSID, _savedPassword, _savedIdentity, _savedAuthType, WM_AUTOCONNECT_TIMEOUT)) {
         _connected = true;
         oledStatus("Connected!", WiFi.localIP().toString());
-    } else {
-        oledStatus("Auto-connect", "failed", "Entering setup...");
+    } else if (!_pairingMode) {
+        // Timeout path — _pairingMode already true if C+D abort happened inside attemptConnect
+        oledStatus("Connection failed", "Entering setup...", "");
         delay(2000);
         startPairingMode();
     }

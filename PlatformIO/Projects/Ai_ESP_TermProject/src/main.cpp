@@ -487,7 +487,7 @@ void setup() {
     // ── WiFi provisioning ──────────────────────────────────────────────────────
     // Handles auto-connect from NVS or opens captive-portal AP (async, non-blocking).
     // Hold Button C + Button D before power-on to force re-pairing.
-    // If connecting takes up to 30 s, this call blocks for that duration.
+    // If connecting takes up to 10 s, this call blocks for that duration.
     // In pairing mode the call returns immediately; the portal runs in the background.
     wifiManager.begin();
 

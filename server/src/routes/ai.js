@@ -3,12 +3,17 @@ const http    = require('http');
 
 const router = express.Router();
 
-const OLLAMA_HOST = process.env.OLLAMA_HOST || 'localhost';
-const OLLAMA_PORT = parseInt(process.env.OLLAMA_PORT || '11434', 10);
+const OLLAMA_HOST    = process.env.OLLAMA_HOST || 'localhost';
+const OLLAMA_PORT    = parseInt(process.env.OLLAMA_PORT || '11434', 10);
+const OLLAMA_TIMEOUT = 120000; // 120 s — LLM inference can be slow
 
-// POST /api/ai/generate — proxies to local Ollama, streams response back to ESP32
+// POST /api/ai/generate — proxies to local Ollama, buffers full response before
+// returning to caller. Buffering (rather than piping) ensures:
+//   1. A proper Content-Length header is sent so the ESP32 knows when the body ends.
+//   2. A socket timeout can abort the Ollama request cleanly on a hung inference.
 router.post('/generate', (req, res) => {
   const body = JSON.stringify(req.body);
+  console.log('[ai/generate] forwarding to Ollama — model:', req.body && req.body.model);
 
   const options = {
     hostname: OLLAMA_HOST,
@@ -22,13 +27,29 @@ router.post('/generate', (req, res) => {
   };
 
   const proxy = http.request(options, (ollamaRes) => {
-    res.status(ollamaRes.statusCode);
-    ollamaRes.pipe(res);
+    let chunks = [];
+    ollamaRes.on('data', chunk => chunks.push(chunk));
+    ollamaRes.on('end', () => {
+      const data = Buffer.concat(chunks);
+      console.log('[ai/generate] Ollama responded — status:', ollamaRes.statusCode,
+                  '— bytes:', data.length);
+      res.status(ollamaRes.statusCode)
+         .set('Content-Type', 'application/json')
+         .send(data);
+    });
+  });
+
+  // Kill the request if Ollama hasn't responded within the timeout.
+  // Without this the proxy hangs until Cloudflare drops the tunnel connection.
+  proxy.setTimeout(OLLAMA_TIMEOUT, () => {
+    proxy.destroy();
+    console.error('[ai/generate] Ollama timed out after', OLLAMA_TIMEOUT / 1000, 's');
+    if (!res.headersSent) res.status(504).json({ error: 'Ollama timeout' });
   });
 
   proxy.on('error', (err) => {
-    console.error('[ai/generate] Ollama unreachable:', err.message);
-    res.status(502).json({ error: 'Ollama unreachable' });
+    console.error('[ai/generate] Ollama error:', err.message);
+    if (!res.headersSent) res.status(502).json({ error: 'Ollama unreachable' });
   });
 
   proxy.write(body);

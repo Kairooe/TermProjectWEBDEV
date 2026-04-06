@@ -44,7 +44,7 @@
 // ── Timing ─────────────────────────────────────────────────────────────────────
 #define WM_HOLD_DURATION        3000UL   // ms C+D must be held to trigger pairing
 #define WM_CONNECT_TIMEOUT_MS  900000UL  // ms timeout for /connect form submission (15 min)
-#define WM_AUTOCONNECT_TIMEOUT 30000UL   // ms timeout for boot auto-connect
+#define WM_AUTOCONNECT_TIMEOUT 10000UL   // ms timeout for boot auto-connect
 
 class WiFiManager {
 public:
